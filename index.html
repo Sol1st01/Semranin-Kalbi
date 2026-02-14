@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Semra'nın Kalbi</title>
+
+<style>
+*{
+ box-sizing:border-box;
+ user-select:none;
+ -webkit-tap-highlight-color:transparent
+}
+
+body{
+ margin:0;
+ background:#0f172a;
+ font-family:system-ui
+}
+
+/* ===== OYUN ALANI ===== */
+#game{
+ width:100vw;
+ height:82vh;
+ background:#6ab04c;
+ position:relative;
+ overflow:hidden;
+}
+
+/* ===== ORTAK BOYUT ===== */
+.entity,.decor{
+ position:absolute;
+ width:64px;
+ height:64px;
+ font-size:56px;
+ text-align:center;
+ line-height:64px;
+}
+
+/* ===== UI ===== */
+#stats{
+ position:absolute;
+ top:12px;left:12px;
+ background:#000;
+ color:#fff;
+ padding:14px 18px;
+ font-size:24px;
+ border-radius:14px;
+ z-index:10
+}
+
+#dialog{
+ position:absolute;
+ bottom:26px;
+ left:18px;right:18px;
+ background:#fff;
+ border:6px solid #000;
+ border-radius:20px;
+ padding:26px;
+ font-size:28px;
+ font-weight:700;
+ line-height:1.4;
+ display:none;
+ z-index:50
+}
+
+#final{
+ position:absolute;
+ inset:0;
+ background:#000;
+ color:#fff;
+ display:none;
+ align-items:center;
+ justify-content:center;
+ text-align:center;
+ padding:40px;
+ font-size:30px;
+ z-index:100
+}
+
+/* ===== KONTROLLER ===== */
+#controls{
+ height:18vh;
+ background:#111;
+ display:flex;
+ justify-content:space-around;
+ align-items:center
+}
+
+.pad{
+ display:grid;
+ grid-template-columns:repeat(3,90px);
+ grid-template-rows:repeat(3,90px)
+}
+
+.btn{
+ background:#374151;
+ color:#fff;
+ border:5px solid #000;
+ font-size:40px;
+ border-radius:18px
+}
+
+.actions{
+ display:flex;
+ gap:26px
+}
+
+.circle{
+ width:110px;
+ height:110px;
+ border-radius:50%;
+ font-size:36px
+}
+</style>
+</head>
+
+<body>
+
+<div id="game">
+ <div id="stats">Notlar: 0 / 10</div>
+
+ <div id="player" class="entity">🤴</div>
+ <div id="semra" class="entity">👸</div>
+
+ <div id="dialog"></div>
+
+ <div id="final">
+ ❤️<br><br>
+ Semra,<br><br>
+ Bu oyundaki her adım<br>
+ sana atılmış bir adımdı.<br><br>
+ <strong>İlk Sevgililer Günümüz kutlu olsun.</strong><br><br>
+ Sonsuza kadar 🤍
+ </div>
+</div>
+
+<div id="controls">
+ <div class="pad">
+  <div></div><button class="btn" data-dir="up">▲</button><div></div>
+  <button class="btn" data-dir="left">◀</button><div></div><button class="btn" data-dir="right">▶</button>
+  <div></div><button class="btn" data-dir="down">▼</button><div></div>
+ </div>
+
+ <div class="actions">
+  <button class="btn circle" id="btnB">B</button>
+  <button class="btn circle" id="btnA">A</button>
+ </div>
+</div>
+
+<script>
+/* ==============================
+   AYARLANABİLİR VERİLER
+   ============================== */
+
+/* 🔹 NOT METİNLERİ (İSTEDİĞİN GİBİ DEĞİŞTİR) */
+const NOTE_TEXTS = [
+ "Semra, seni kırdığım her an kendimden eksildim.",
+ "Bir gülüşünü zamanında tutamadım.",
+ "Yaptığım her yanlışta beni tekrar affettiğin için teşekkür ederim.",
+ "Sessizliğin bana çok şey öğretti.",
+ "Geç kaldım ama farkına vardım.",
+ "Kalbini incittiğim her an pişman oldum.",
+ "Bu not kalbimin ve sevgimin en saf hali.",
+ "Seni sevmekten hiç vazgeçmedim.",
+ "Affın benim umudum.",
+ "Bir kez daha daha doğsam yine seni severim."
+];
+
+/* 🔹 NPC DİYALOGLARI (EKLE / SİL / DÜZENLE) */
+const NPC_DIALOGS = [
+ "Semra'yı çok kırdın ama vazgeçme o seni çok seviyor.",
+ "Bu köy senin yaptıklarını konuşuyor ama o her zaman seni savunuyor.",
+ "Özür dilemek yarayı sarmaz ama iyileştirmenin ilk adımıdır.",
+ "Gerçek sevgi Semranın kalbinde ve seni bekliyor.",
+ "Hatalarından ders çıkarttın ama her seferinde bambaşka yollarla kırdın,Semranın sevgisini boşa çıkartma."
+];
+
+/* 🔹 NPC SAYISI = NPC_DIALOGS.length */
+
+/* ==============================
+   OYUN MOTORU
+   ============================== */
+
+const game = document.getElementById("game");
+const player = document.getElementById("player");
+const semra = document.getElementById("semra");
+const dialog = document.getElementById("dialog");
+const stats = document.getElementById("stats");
+const finalScreen = document.getElementById("final");
+
+const GRID = 64;
+const COLS = Math.floor(window.innerWidth / GRID);
+const ROWS = Math.floor((window.innerHeight * 0.82) / GRID);
+
+let used = new Set();
+const key = (c,r)=>`${c}-${r}`;
+
+function place(el,c,r){
+ el.style.left = c*GRID+"px";
+ el.style.top  = r*GRID+"px";
+ used.add(key(c,r));
+ game.appendChild(el);
+}
+
+function freeCell(){
+ let c,r,k;
+ do{
+  c=Math.floor(Math.random()*COLS);
+  r=Math.floor(Math.random()*ROWS);
+  k=key(c,r);
+ }while(used.has(k));
+ return {c,r};
+}
+
+/* PLAYER */
+let px= Math.floor(COLS/2), py=ROWS-2;
+place(player,px,py);
+
+/* SEMRA */
+place(semra,Math.floor(COLS/2),0);
+
+/* DECOR */
+["🌲","🌳","🏠","🏡","🪨","🌲","🪨"].forEach(e=>{
+ for(let i=0;i<6;i++){
+  let d=document.createElement("div");
+  d.className="decor";
+  d.textContent=e;
+  let c=freeCell();
+  place(d,c.c,c.r);
+ }
+});
+
+/* NOTES */
+let collected=0;
+const notes=[];
+NOTE_TEXTS.forEach(t=>{
+ let n=document.createElement("div");
+ n.className="entity";
+ n.textContent="💌";
+ n.dataset.text=t;
+ let c=freeCell();
+ place(n,c.c,c.r);
+ notes.push(n);
+});
+
+/* NPC */
+const npcEls=[];
+const npcEmojis=["👴","👵","🧓"];
+NPC_DIALOGS.forEach(t=>{
+ let n=document.createElement("div");
+ n.className="entity";
+ n.textContent=npcEmojis[Math.floor(Math.random()*npcEmojis.length)];
+ n.dataset.msg=t;
+ let c=freeCell();
+ place(n,c.c,c.r);
+ npcEls.push(n);
+});
+
+/* UI */
+function showDialog(t){
+ dialog.textContent=t;
+ dialog.style.display="block";
+}
+function closeDialog(){dialog.style.display="none";}
+
+function move(dx,dy){
+ let nx=px+dx, ny=py+dy;
+ if(nx>=0 && nx<COLS && ny>=0 && ny<ROWS){
+  px=nx; py=ny;
+  player.style.left=px*GRID+"px";
+  player.style.top=py*GRID+"px";
+ }
+}
+
+/* CONTROLS */
+document.querySelectorAll(".btn[data-dir]").forEach(b=>{
+ b.onclick=()=>{
+  if(b.dataset.dir=="up")move(0,-1);
+  if(b.dataset.dir=="down")move(0,1);
+  if(b.dataset.dir=="left")move(-1,0);
+  if(b.dataset.dir=="right")move(1,0);
+ };
+});
+
+btnB.onclick=()=>{
+ npcEls.forEach(n=>{
+  if(Math.abs(px*GRID-parseInt(n.style.left))<GRID)
+   showDialog(n.dataset.msg);
+ });
+ notes.forEach(n=>{
+  if(n.style.opacity!=="0.3" &&
+     Math.abs(px*GRID-parseInt(n.style.left))<GRID){
+   n.style.opacity="0.3";
+   collected++;
+   stats.textContent=`Notlar: ${collected} / ${NOTE_TEXTS.length}`;
+   showDialog(n.dataset.text);
+  }
+ });
+ if(px==Math.floor(COLS/2) && py==0){
+  if(collected==NOTE_TEXTS.length)finalScreen.style.display="flex";
+  else showDialog("Semra: Hala anlamıyosun. Çok kırıldım sana");
+ }
+};
+
+btnA.onclick=closeDialog;
+</script>
+
+</body>
+</html>
